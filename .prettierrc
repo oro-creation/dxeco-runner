@@ -1,0 +1,11 @@
+{
+  "endOfLine":"auto",
+  "tabWidth": 2,
+  "useTabs": false,
+  "singleQuote": true,
+  "importOrder": ["^@nestjs/(.*)$", "<THIRD_PARTY_MODULES>", "^src/(.*)$", "^e2e/(.*)$", "^[./]"],
+  "importOrderSeparation": true,
+  "importOrderSortSpecifiers": true,
+  "importOrderCaseInsensitive": true,
+  "importOrderParserPlugins": ["typescript", "decorators-legacy"]
+}
