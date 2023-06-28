@@ -1,20 +1,12 @@
 {
   "compilerOptions": {
-    "target": "esnext",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
+    "target": "ES2018",
+    "module": "CommonJS",
+    "outDir": "dist",
     "strict": true,
-    "forceConsistentCasingInFileNames": true,
-    "module": "esnext",
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "typeRoots": ["src/types", "node_modules/@types"],
-    "noFallthroughCasesInSwitch": true
+    "esModuleInterop": true,
   },
-  "include": ["src"]
+  "include": [
+    "src/**/*"
+  ]
 }
