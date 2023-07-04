@@ -1,46 +1,140 @@
-import { Spinner } from 'cli-spinner';
+import axios from 'axios';
 import kleur from 'kleur';
 import { machineId } from 'node-machine-id';
-import readline from 'readline';
+import * as ts from 'typescript';
+import yargs from 'yargs';
 
-import { sleep } from './utils/sleep';
+import { AccountAdaptor } from './types';
+import { readCsv } from './utils/csv/readCsv';
+import { sleep } from './utils/function/sleep';
+import promptForQuit from './utils/prompt/promptForQuit';
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
+const argv = yargs(process.argv.slice(2))
+  .option('name', {
+    description: 'Runner name',
+    type: 'string',
+  })
+  .option('api-key', {
+    description: 'API Key',
+    type: 'string',
+  })
+  .demandOption(['name', 'api-key'])
+  .help().argv;
 
-export const runner = async () => {
-  const id = await machineId();
+export async function runner() {
+  // Preparing arguments
+  const uid = await machineId();
+  const apiKey = (await argv)['api-key'];
+  const name = (await argv)['name'];
 
   console.log(kleur.blue('Starting dxeco-runner...'));
-  const spinner = new Spinner(`Registering dxeco-runner with ID: ${id}`);
-  spinner.start();
 
-  // TODO: ランナー登録APIを呼び出す
-  await sleep(5000);
-
-  spinner.stop();
-  console.log(kleur.blue('Registration complete.'));
-  console.log(kleur.blue('Preparation complete.'));
-  console.log(kleur.green('Ready'));
-
-  // TODO: ランナーのジョブAPIをポーリングする
-  // TODO: ジョブがあればジョブ内容に従って実行する
-  // TODO: 終わり、またポーリング
-
-  promptForQuit();
-};
-
-const promptForQuit = () => {
-  rl.question('Press q to quit: ', (answer) => {
-    if (answer.toLowerCase() === 'q') {
-      console.log('Quitting...');
-      rl.close();
-      process.exit(0);
-    } else {
-      console.log('Invalid input. Press q to quit.');
-      promptForQuit();
-    }
+  // Preparing API client
+  const api = axios.create({
+    baseURL: 'http://localhost:4000/api',
+    headers: {
+      'X-API-Key': apiKey,
+    },
   });
-};
+
+  // Get my user context
+  const {
+    data: { organizationId },
+  } = await api.get<{
+    id: string;
+    organizationId: string;
+  }>('/auth/current-user');
+
+  // Register as a runner
+  const {
+    data: { id: runnerId },
+  } = await api.post<{
+    id: string;
+  }>('/runners/register', {
+    organizationId,
+    uid,
+    name,
+  });
+
+  console.log(kleur.blue(`Registration complete: ${uid}`));
+
+  // Launch prompt
+  // promptForQuit();
+
+  // Activate every 30 seconds
+  setInterval(async () => {
+    await api.post<{
+      id: string;
+    }>(`/runners/${runnerId}/activate`, {
+      id: runnerId,
+    });
+  }, 30000);
+
+  // Polls its own jobs every 30 seconds
+  console.log(kleur.green('Waiting for jobs...'));
+  do {
+    const {
+      data: { data: jobs },
+    } = await api.get<{
+      data: Array<{
+        id: string;
+        status: string;
+        runnableCode?: string;
+      }>;
+    }>('/runner-jobs', {
+      params: {
+        organizationId,
+        runnerId,
+        type: 'CustomAccountIntegration',
+        status: 'Active',
+      },
+    });
+
+    if (jobs.length > 0) {
+      console.log(
+        kleur.blue(`Jobs found: ${jobs.map((v) => v.id).join(', ')}`)
+      );
+    }
+
+    for (const job of jobs) {
+      console.log(kleur.blue(`Job started: ${job.id}`));
+
+      if (!job.runnableCode) {
+        await api.put(`/runner-jobs/${job.id}`, {
+          id: job.id,
+          status: 'Error',
+          errorReason: 'Runnable code not found',
+        });
+
+        continue;
+      }
+
+      const transpiled = ts.transpile(job.runnableCode);
+      const runnable = eval(transpiled) as (args: {
+        props: unknown;
+        axios: unknown;
+        csv: {
+          readCsv(path: string): Array<Array<string>>;
+        };
+      }) => Promise<AccountAdaptor[]>;
+
+      const result = await runnable({
+        props: {},
+        axios,
+        csv: {
+          readCsv,
+        },
+      });
+
+      await api.put(`/runner-jobs/${job.id}`, {
+        id: job.id,
+        status: 'Done',
+        result,
+      });
+
+      console.log(kleur.blue(`Job done: ${job.id}`));
+    }
+
+    await sleep(30000);
+  } while (true);
+}
