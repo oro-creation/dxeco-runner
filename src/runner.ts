@@ -7,7 +7,6 @@ import yargs from 'yargs';
 import { AccountAdaptor } from './types';
 import { readCsv } from './utils/csv/readCsv';
 import { sleep } from './utils/function/sleep';
-import promptForQuit from './utils/prompt/promptForQuit';
 
 const argv = yargs(process.argv.slice(2))
   .option('name', {
@@ -18,6 +17,10 @@ const argv = yargs(process.argv.slice(2))
     description: 'API Key',
     type: 'string',
   })
+  .option('test', {
+    description: 'Test launch',
+    type: 'boolean',
+  })
   .demandOption(['name', 'api-key'])
   .help().argv;
 
@@ -26,6 +29,7 @@ export async function runner() {
   const uid = await machineId();
   const apiKey = (await argv)['api-key'];
   const name = (await argv)['name'];
+  const test = (await argv)['test'];
 
   console.log(kleur.blue('Starting dxeco-runner...'));
 
@@ -97,44 +101,52 @@ export async function runner() {
     }
 
     for (const job of jobs) {
-      console.log(kleur.blue(`Job started: ${job.id}`));
+      try {
+        console.log(kleur.blue(`Job started: ${job.id}`));
 
-      if (!job.runnableCode) {
-        await api.put(`/runner-jobs/${job.id}`, {
-          id: job.id,
-          status: 'Error',
-          errorReason: 'Runnable code not found',
+        if (!job.runnableCode) {
+          throw new Error('Runnable code not found');
+        }
+
+        const transpiled = ts.transpile(job.runnableCode);
+        const runnable = eval(transpiled) as (args: {
+          props: unknown;
+          axios: unknown;
+          csv: {
+            readCsv(path: string): Array<Array<string>>;
+          };
+        }) => Promise<AccountAdaptor[]>;
+
+        const result = await runnable({
+          props: {},
+          axios,
+          csv: {
+            readCsv,
+          },
         });
 
-        continue;
+        await api.put(`/runner-jobs/${job.id}`, {
+          id: job.id,
+          status: 'Done',
+          result,
+        });
+
+        console.log(kleur.blue(`Job done: ${job.id}`));
+      } catch (e) {
+        if (e instanceof Error) {
+          console.log(kleur.blue(`Job error: ${e.message}`));
+
+          await api.put(`/runner-jobs/${job.id}`, {
+            id: job.id,
+            status: 'Error',
+            errorReason: e.stack,
+          });
+
+          continue;
+        }
       }
-
-      const transpiled = ts.transpile(job.runnableCode);
-      const runnable = eval(transpiled) as (args: {
-        props: unknown;
-        axios: unknown;
-        csv: {
-          readCsv(path: string): Array<Array<string>>;
-        };
-      }) => Promise<AccountAdaptor[]>;
-
-      const result = await runnable({
-        props: {},
-        axios,
-        csv: {
-          readCsv,
-        },
-      });
-
-      await api.put(`/runner-jobs/${job.id}`, {
-        id: job.id,
-        status: 'Done',
-        result,
-      });
-
-      console.log(kleur.blue(`Job done: ${job.id}`));
     }
 
-    await sleep(30000);
+    await sleep(test ? 5000 : 60000);
   } while (true);
 }
