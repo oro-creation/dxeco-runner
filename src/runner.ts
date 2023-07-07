@@ -17,9 +17,10 @@ const argv = yargs(process.argv.slice(2))
     description: 'API Key',
     type: 'string',
   })
-  .option('test', {
-    description: 'Test launch',
-    type: 'boolean',
+  .option('interval', {
+    description: 'Jobs polling interval',
+    type: 'number',
+    default: 30000,
   })
   .demandOption(['name', 'api-key'])
   .help().argv;
@@ -29,7 +30,7 @@ export async function runner() {
   const uid = await machineId();
   const apiKey = (await argv)['api-key'];
   const name = (await argv)['name'];
-  const test = (await argv)['test'];
+  const interval = (await argv)['interval'];
 
   console.log(kleur.blue('Starting dxeco-runner...'));
 
@@ -147,6 +148,6 @@ export async function runner() {
       }
     }
 
-    await sleep(test ? 5000 : 60000);
+    await sleep(interval);
   } while (true);
 }
