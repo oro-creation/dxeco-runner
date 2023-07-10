@@ -1,6 +1,7 @@
 import axios from 'axios';
 import kleur from 'kleur';
 import { machineId } from 'node-machine-id';
+import * as pw from 'playwright-core';
 import * as ts from 'typescript';
 import yargs from 'yargs';
 
@@ -116,6 +117,9 @@ export async function runner() {
           csv: {
             readCsv(path: string): Array<Array<string>>;
           };
+          pw: {
+            chromium: pw.BrowserType;
+          };
         }) => Promise<AccountAdaptor[]>;
 
         const result = await runnable({
@@ -124,6 +128,7 @@ export async function runner() {
           csv: {
             readCsv,
           },
+          pw,
         });
 
         await api.put(`/runner-jobs/${job.id}`, {
