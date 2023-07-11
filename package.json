@@ -17,8 +17,8 @@
     "type": "git",
     "url": "git+https://github.com/oro-dxeco/runner.git"
   },
-  "author": "ORO <oro_dxeco@jp.oro.com>",
-  "license": "UNLICENSED",
+  "author": "oRo Co., Ltd. <oro_dxeco@jp.oro.com>",
+  "license": "MIT",
   "homepage": "https://github.com/oro-dxeco/runner#readme",
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^4.1.1",
