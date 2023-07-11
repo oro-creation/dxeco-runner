@@ -20,6 +20,11 @@ const argv = yargs(process.argv.slice(2))
     description: 'API Key',
     type: 'string',
   })
+  .option('api-url', {
+    description: 'API URL',
+    type: 'string',
+    default: 'https://api.dxeco.io/api',
+  })
   .option('interval', {
     description: 'Jobs polling interval',
     type: 'number',
@@ -32,6 +37,7 @@ export async function runner() {
   try {
     // Preparing arguments
     const apiKey = (await argv)['api-key'];
+    const apiUrl = (await argv)['api-url'];
     const name = (await argv)['name'];
     const interval = (await argv)['interval'];
 
@@ -39,7 +45,7 @@ export async function runner() {
 
     // Preparing API client
     const api = axios.create({
-      baseURL: 'http://localhost:4000/api',
+      baseURL: apiUrl,
       headers: {
         'X-API-Key': apiKey,
       },
