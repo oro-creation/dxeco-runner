@@ -1,6 +1,5 @@
 import axios from 'axios';
 import kleur from 'kleur';
-import { machineId } from 'node-machine-id';
 import * as pw from 'playwright-core';
 import * as ts from 'typescript';
 import yargs from 'yargs';
@@ -28,7 +27,6 @@ const argv = yargs(process.argv.slice(2))
 
 export async function runner() {
   // Preparing arguments
-  const uid = await machineId();
   const apiKey = (await argv)['api-key'];
   const name = (await argv)['name'];
   const interval = (await argv)['interval'];
@@ -58,14 +56,10 @@ export async function runner() {
     id: string;
   }>('/runners/register', {
     organizationId,
-    uid,
     name,
   });
 
-  console.log(kleur.blue(`Registration complete: ${uid}`));
-
-  // Launch prompt
-  // promptForQuit();
+  console.log(kleur.blue(`Registration complete: ${runnerId}`));
 
   // Activate every 30 seconds
   setInterval(async () => {
@@ -111,6 +105,7 @@ export async function runner() {
         }
 
         const transpiled = ts.transpile(job.runnableCode);
+
         const runnable = eval(transpiled) as (args: {
           props: unknown;
           axios: unknown;
