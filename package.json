@@ -8,7 +8,7 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "dev": "node --loader ts-node/esm src/dev.ts",
+    "dev": "node --loader ts-node/esm src/dev.ts --api-url=http://localhost:4000/api --api-key=dummy --name=TestRunner --interval=5000",
     "build": "npm run clean && tsc",
     "lint": "eslint src --ext ts,tsx --max-warnings 0",
     "preview": "vite preview"
