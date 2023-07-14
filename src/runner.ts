@@ -1,46 +1,185 @@
-import { Spinner } from 'cli-spinner';
-import kleur from 'kleur';
-import { machineId } from 'node-machine-id';
-import readline from 'readline';
+import axios from 'axios';
+import log4js from 'log4js';
+import * as pw from 'playwright-core';
+import * as ts from 'typescript';
+import yargs from 'yargs';
 
-import { sleep } from './utils/sleep';
+import { AccountAdaptor } from './types';
+import { readCsv } from './utils/csv/readCsv';
+import { sleep } from './utils/function/sleep';
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
+const logger = log4js.getLogger();
+logger.level = 'trace';
 
-export const runner = async () => {
-  const id = await machineId();
+const argv = yargs(process.argv.slice(2))
+  .option('name', {
+    description: 'Runner name',
+    type: 'string',
+  })
+  .option('api-key', {
+    description: 'API Key',
+    type: 'string',
+  })
+  .option('api-url', {
+    description: 'API URL',
+    type: 'string',
+    default: 'https://api.dxeco.io/api',
+  })
+  .option('interval', {
+    description: 'Jobs polling interval',
+    type: 'number',
+    default: 30000,
+  })
+  .demandOption(['name', 'api-key'])
+  .help().argv;
 
-  console.log(kleur.blue('Starting dxeco-runner...'));
-  const spinner = new Spinner(`Registering dxeco-runner with ID: ${id}`);
-  spinner.start();
+export async function runner() {
+  try {
+    // Preparing arguments
+    const apiKey = (await argv)['api-key'];
+    const apiUrl = (await argv)['api-url'];
+    const name = (await argv)['name'];
+    const interval = (await argv)['interval'];
 
-  // TODO: ランナー登録APIを呼び出す
-  await sleep(5000);
+    logger.trace('Starting dxeco-runner...');
 
-  spinner.stop();
-  console.log(kleur.blue('Registration complete.'));
-  console.log(kleur.blue('Preparation complete.'));
-  console.log(kleur.green('Ready'));
+    // Preparing API client
+    const api = axios.create({
+      baseURL: apiUrl,
+      headers: {
+        'X-API-Key': apiKey,
+      },
+    });
 
-  // TODO: ランナーのジョブAPIをポーリングする
-  // TODO: ジョブがあればジョブ内容に従って実行する
-  // TODO: 終わり、またポーリング
+    // Get my user context
+    const {
+      data: { organizationId },
+    } = await api.get<{
+      id: string;
+      organizationId: string;
+    }>('/auth/current-user');
 
-  promptForQuit();
-};
+    // Register as a runner
+    const {
+      data: { id: runnerId },
+    } = await api.post<{
+      id: string;
+    }>('/runners/register', {
+      organizationId,
+      name,
+    });
 
-const promptForQuit = () => {
-  rl.question('Press q to quit: ', (answer) => {
-    if (answer.toLowerCase() === 'q') {
-      console.log('Quitting...');
-      rl.close();
-      process.exit(0);
-    } else {
-      console.log('Invalid input. Press q to quit.');
-      promptForQuit();
+    logger.trace(`Registration complete: ${runnerId}`);
+
+    // Activate every 30 seconds
+    setInterval(async () => {
+      try {
+        await api.post<{
+          id: string;
+        }>(`/runners/${runnerId}/activate`, {
+          id: runnerId,
+        });
+      } catch (e) {
+        if (e instanceof Error) {
+          logger.error(`Activation failed: ${e.message}\n${e.stack}`);
+        }
+      }
+    }, 30000);
+
+    logger.trace(`Waiting for jobs...`);
+
+    // Polls its own jobs every 30 seconds
+    do {
+      const jobs = await (async () => {
+        try {
+          const {
+            data: { data: jobs },
+          } = await api.get<{
+            data: Array<{
+              id: string;
+              status: string;
+              runnableCode?: string;
+            }>;
+          }>('/runner-jobs', {
+            params: {
+              organizationId,
+              runnerId,
+              type: 'CustomAccountIntegration',
+              status: 'Active',
+            },
+          });
+          return jobs;
+        } catch (e) {
+          if (e instanceof Error) {
+            logger.error(
+              `Getting runner-jobs failed: ${e.message}\n${e.stack}`
+            );
+          }
+          return [];
+        }
+      })();
+
+      if (jobs.length > 0) {
+        logger.trace(`Jobs found: ${jobs.map((v) => v.id).join(', ')}`);
+      }
+
+      for (const job of jobs) {
+        try {
+          logger.trace(`Job started: ${job.id}`);
+
+          if (!job.runnableCode) {
+            throw new Error('Runnable code not found');
+          }
+
+          const transpiled = ts.transpile(job.runnableCode);
+
+          const runnable = eval(transpiled) as (args: {
+            props: unknown;
+            axios: unknown;
+            csv: {
+              readCsv(path: string): Array<Array<string>>;
+            };
+            pw: {
+              chromium: pw.BrowserType;
+            };
+          }) => Promise<AccountAdaptor[]>;
+
+          const result = await runnable({
+            props: {},
+            axios,
+            csv: {
+              readCsv,
+            },
+            pw,
+          });
+
+          await api.put(`/runner-jobs/${job.id}`, {
+            id: job.id,
+            status: 'Done',
+            result,
+          });
+
+          logger.trace(`Job done: ${job.id}`);
+        } catch (e) {
+          if (e instanceof Error) {
+            logger.trace(`Job error: ${e.message}`);
+
+            await api.put(`/runner-jobs/${job.id}`, {
+              id: job.id,
+              status: 'Error',
+              errorReason: e.stack,
+            });
+
+            continue;
+          }
+        }
+      }
+
+      await sleep(interval);
+    } while (true);
+  } catch (e) {
+    if (e instanceof Error) {
+      logger.error(`${e.message}\n${e.stack}`);
     }
-  });
-};
+  }
+}
