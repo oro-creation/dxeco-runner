@@ -1,53 +1,52 @@
-import axios from 'axios';
-import log4js from 'log4js';
-import * as pw from 'playwright-core';
-import * as ts from 'typescript';
-import yargs from 'yargs';
+import axios from "npm:axios";
+import log4js from "npm:log4js";
+import * as pw from "npm:playwright-core";
+import * as ts from "npm:typescript";
 
-import { AccountAdaptor } from './types';
-import { readCsv } from './utils/csv/readCsv';
-import { sleep } from './utils/function/sleep';
+import { AccountAdaptor } from "./types.d.ts";
+import { readCsv } from "./utils/csv/readCsv.ts";
+import { sleep } from "./utils/function/sleep.ts";
 
 const logger = log4js.getLogger();
-logger.level = 'trace';
+logger.level = "trace";
 
-const argv = yargs(process.argv.slice(2))
-  .option('name', {
-    description: 'Runner name',
-    type: 'string',
-  })
-  .option('api-key', {
-    description: 'API Key',
-    type: 'string',
-  })
-  .option('api-url', {
-    description: 'API URL',
-    type: 'string',
-    default: 'https://api.dxeco.io/api',
-  })
-  .option('interval', {
-    description: 'Jobs polling interval',
-    type: 'number',
-    default: 30000,
-  })
-  .demandOption(['name', 'api-key'])
-  .help().argv;
+export async function runner(
+  props: Readonly<{
+    /**
+     * Runner name
+     */
+    name: string;
+    /**
+     * API Key
+     */
+    apiKey: string;
+    /**
+     * API URL
+     * @default https://api.dxeco.io/api
+     */
+    apiUrl?: string;
+    /**
+     * Jobs polling interval
+     * @default 30000
+     */
+    interval?: number;
+  }>
+) {
+  const {
+    name,
+    apiKey,
+    apiUrl = "https://api.dxeco.io/api",
+    interval = 30000,
+  } = props;
 
-export async function runner() {
   try {
-    // Preparing arguments
-    const apiKey = (await argv)['api-key'];
-    const apiUrl = (await argv)['api-url'];
-    const name = (await argv)['name'];
-    const interval = (await argv)['interval'];
-
-    logger.trace('Starting dxeco-runner...');
+    logger.trace("Starting dxeco-runner...");
 
     // Preparing API client
     const api = axios.create({
       baseURL: apiUrl,
       headers: {
-        'X-API-Key': apiKey,
+        "X-API-Key": apiKey,
       },
     });
 
@@ -57,14 +56,14 @@ export async function runner() {
     } = await api.get<{
       id: string;
       organizationId: string;
-    }>('/auth/current-user');
+    }>("/auth/current-user");
 
     // Register as a runner
     const {
       data: { id: runnerId },
     } = await api.post<{
       id: string;
-    }>('/runners/register', {
+    }>("/runners/register", {
       organizationId,
       name,
     });
@@ -100,12 +99,12 @@ export async function runner() {
               status: string;
               runnableCode?: string;
             }>;
-          }>('/runner-jobs', {
+          }>("/runner-jobs", {
             params: {
               organizationId,
               runnerId,
-              type: 'CustomAccountIntegration',
-              status: 'Active',
+              type: "CustomAccountIntegration",
+              status: "Active",
             },
           });
           return jobs;
@@ -120,7 +119,7 @@ export async function runner() {
       })();
 
       if (jobs.length > 0) {
-        logger.trace(`Jobs found: ${jobs.map((v) => v.id).join(', ')}`);
+        logger.trace(`Jobs found: ${jobs.map((v) => v.id).join(", ")}`);
       }
 
       for (const job of jobs) {
@@ -128,7 +127,7 @@ export async function runner() {
           logger.trace(`Job started: ${job.id}`);
 
           if (!job.runnableCode) {
-            throw new Error('Runnable code not found');
+            throw new Error("Runnable code not found");
           }
 
           const transpiled = ts.transpile(job.runnableCode);
@@ -155,7 +154,7 @@ export async function runner() {
 
           await api.put(`/runner-jobs/${job.id}`, {
             id: job.id,
-            status: 'Done',
+            status: "Done",
             result,
           });
 
@@ -166,7 +165,7 @@ export async function runner() {
 
             await api.put(`/runner-jobs/${job.id}`, {
               id: job.id,
-              status: 'Error',
+              status: "Error",
               errorReason: e.stack,
             });
 

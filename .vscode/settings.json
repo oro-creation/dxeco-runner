@@ -1,7 +1,7 @@
 {
   "editor.tabSize": 2,
   "editor.formatOnType": true,
-  "editor.formatOnSave": false,
+  "editor.formatOnSave": true,
   "editor.formatOnPaste": true,
   "editor.codeActionsOnSave": {
     "source.organizeImports": "never"

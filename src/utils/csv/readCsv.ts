@@ -1,5 +1,5 @@
-import { parse } from 'csv-parse/sync';
-import fs from 'fs';
+import { parse } from "npm:csv-parse/sync";
+import fs from "node:fs";
 
 /**
  * CSVを読み込んで返す
