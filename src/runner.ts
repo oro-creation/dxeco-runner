@@ -1,11 +1,7 @@
 import axios from "npm:axios";
-import * as pw from "npm:playwright-core";
-import ts from "npm:typescript";
-
-import { AccountAdaptor } from "./types.d.ts";
-import { readCsv } from "./utils/csv/readCsv.ts";
 import { sleep } from "./utils/function/sleep.ts";
 import { getLogger } from "jsr:@std/log";
+import { bundle } from "https://deno.land/x/emit@0.38.3/mod.ts";
 
 const logger = getLogger();
 
@@ -122,6 +118,7 @@ export async function runner(
       }
 
       for (const job of jobs) {
+        let blobUrl: string | undefined;
         try {
           logger.info(`Job started: ${job.id}`);
 
@@ -129,29 +126,17 @@ export async function runner(
             throw new Error("Runnable code not found");
           }
 
-          const transpiled = ts.transpile(job.runnableCode, {
-            module: ts.ModuleKind.ES2020,
-          });
+          logger.info(`code: ${job.runnableCode}`);
+          const bundled = (await bundle(job.runnableCode, {})).code;
+          logger.info(`Runnable code bundled: ${job.runnableCode}`);
 
-          const runnable = eval(transpiled) as (args: {
-            props: unknown;
-            axios: unknown;
-            csv: {
-              readCsv(path: string): Array<Array<string>>;
-            };
-            pw: {
-              chromium: pw.BrowserType;
-            };
-          }) => Promise<AccountAdaptor[]>;
-
-          const result = await runnable({
-            props: {},
-            axios,
-            csv: {
-              readCsv,
-            },
-            pw,
-          });
+          blobUrl = URL.createObjectURL(
+            new Blob([bundled], {
+              type: "text/javascript",
+            })
+          );
+          const result = await import(blobUrl);
+          logger.info(`Runnable code imported: ${result}`);
 
           await api.put(`/runner-jobs/${job.id}`, {
             id: job.id,
@@ -161,6 +146,10 @@ export async function runner(
 
           logger.info(`Job done: ${job.id}`);
         } catch (e) {
+          if (blobUrl) {
+            URL.revokeObjectURL(blobUrl);
+          }
+          logger.error(`Job error: ${e}`);
           if (e instanceof Error) {
             logger.info(`Job error: ${e.message}`);
 
