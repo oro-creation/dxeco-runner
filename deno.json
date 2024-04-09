@@ -5,7 +5,7 @@
   },
   "tasks": {
     "clean": "rimraf dist",
-    "dev": "deno run --watch --check --allow-net ./src/dev.ts",
+    "dev": "deno run --watch --check --allow-net --allow-read --allow-env --allow-sys ./src/dev.ts",
     "build": "npm run clean && tsc",
     "lint": "deno lint"
   }

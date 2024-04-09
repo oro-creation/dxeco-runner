@@ -1,14 +1,13 @@
 import axios from "npm:axios";
-import log4js from "npm:log4js";
 import * as pw from "npm:playwright-core";
-import * as ts from "npm:typescript";
+import ts from "npm:typescript";
 
 import { AccountAdaptor } from "./types.d.ts";
 import { readCsv } from "./utils/csv/readCsv.ts";
 import { sleep } from "./utils/function/sleep.ts";
+import { getLogger } from "jsr:@std/log";
 
-const logger = log4js.getLogger();
-logger.level = "trace";
+const logger = getLogger();
 
 export async function runner(
   props: Readonly<{
@@ -40,7 +39,7 @@ export async function runner(
   } = props;
 
   try {
-    logger.trace("Starting dxeco-runner...");
+    logger.info("Starting dxeco-runner...");
 
     // Preparing API client
     const api = axios.create({
@@ -68,7 +67,7 @@ export async function runner(
       name,
     });
 
-    logger.trace(`Registration complete: ${runnerId}`);
+    logger.info(`Registration complete: ${runnerId}`);
 
     // Activate every 30 seconds
     setInterval(async () => {
@@ -85,7 +84,7 @@ export async function runner(
       }
     }, 30000);
 
-    logger.trace(`Waiting for jobs...`);
+    logger.info(`Waiting for jobs...`);
 
     // Polls its own jobs every 30 seconds
     do {
@@ -119,18 +118,20 @@ export async function runner(
       })();
 
       if (jobs.length > 0) {
-        logger.trace(`Jobs found: ${jobs.map((v) => v.id).join(", ")}`);
+        logger.info(`Jobs found: ${jobs.map((v) => v.id).join(", ")}`);
       }
 
       for (const job of jobs) {
         try {
-          logger.trace(`Job started: ${job.id}`);
+          logger.info(`Job started: ${job.id}`);
 
           if (!job.runnableCode) {
             throw new Error("Runnable code not found");
           }
 
-          const transpiled = ts.transpile(job.runnableCode);
+          const transpiled = ts.transpile(job.runnableCode, {
+            module: ts.ModuleKind.ES2020,
+          });
 
           const runnable = eval(transpiled) as (args: {
             props: unknown;
@@ -158,10 +159,10 @@ export async function runner(
             result,
           });
 
-          logger.trace(`Job done: ${job.id}`);
+          logger.info(`Job done: ${job.id}`);
         } catch (e) {
           if (e instanceof Error) {
-            logger.trace(`Job error: ${e.message}`);
+            logger.info(`Job error: ${e.message}`);
 
             await api.put(`/runner-jobs/${job.id}`, {
               id: job.id,
