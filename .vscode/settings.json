@@ -4,12 +4,9 @@
   "editor.formatOnSave": false,
   "editor.formatOnPaste": true,
   "editor.codeActionsOnSave": {
-    "source.organizeImports": "never",
-    "source.fixAll.eslint": "explicit"
+    "source.organizeImports": "never"
   },
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "files.exclude": {
-    "node_modules": true
-  },
-  "typescript.tsdk": "node_modules\\typescript\\lib"
+  "editor.defaultFormatter": "denoland.vscode-deno",
+  "deno.enable": true,
 }
+ 
